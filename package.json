@@ -1,10 +1,15 @@
 {
-  "name": "claim-backend",
+  "name": "solana-claim-backend",
   "version": "1.0.0",
-  "main": "server.js",
+  "type": "module",
+  "main": "claim.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node claim.js"
   },
   "dependencies": {
-    "@solana/web3.js": "^1.73.2",
-    "@solana/spl-token": "^0.3.5",
+    "@solana/web3.js": "^1.75.1",
+    "bs58": "^5.0.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2"
+  }
+}
