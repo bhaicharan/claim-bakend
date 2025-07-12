@@ -1,21 +1,17 @@
 const express = require("express");
-const app = express();
 const cors = require("cors");
+const app = express();
 require("dotenv").config();
 
-// ✅ Enable JSON body parsing
+// ✅ Middleware
 app.use(express.json());
-
-// ✅ Enable CORS for frontend requests
 app.use(cors());
 
-// ✅ Route import
+// ✅ Routes
 const claimRoute = require("./claim");
-
-// ✅ Use route
 app.use("/claim", claimRoute);
 
-// ✅ Default route (optional)
+// ✅ Default route
 app.get("/", (req, res) => {
   res.send("✅ Claim backend is running");
 });
@@ -23,5 +19,5 @@ app.get("/", (req, res) => {
 // ✅ Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server started on port ${PORT}`);
+  console.log(🚀 Server running on port ${PORT});
 });
