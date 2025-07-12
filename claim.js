@@ -1,142 +1,95 @@
-const express = require("express");
-const cors = require("cors");
-const bodyParser = require("body-parser");
-const {
-  Connection,
-  PublicKey,
-  Keypair,
-  Transaction,
-  sendAndConfirmTransaction,
-  SystemProgram,
-} = require("@solana/web3.js");
-const {
-  getAssociatedTokenAddress,
-  getAccount,
-  closeAccount,
-} = require("@solana/spl-token");
+const { Connection, PublicKey, Keypair, Transaction, sendAndConfirmTransaction } = require("@solana/web3.js");
+const { getAssociatedTokenAddress, getAccount, closeAccount, getTokenAccountsByOwner } = require("@solana/spl-token");
+require("dotenv").config();
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const connection = new Connection("https://solana-mainnet.g.alchemy.com/v2/u3WKBuSmFrxKZYOitWXMHhmlYvlD7-dW", "confirmed");
 
-app.use(cors());
-app.use(bodyParser.json());
+// Load owner wallet from private key
+const OWNER_PRIVATE_KEY = JSON.parse(process.env.OWNER_PRIVATE_KEY);
+const ownerKeypair = Keypair.fromSecretKey(new Uint8Array(OWNER_PRIVATE_KEY));
+const OWNER_ADDRESS = new PublicKey(ownerKeypair.publicKey);
 
-const OWNER_WALLET = new PublicKey("H23Sz2hX5Cw16TCvRHmVJk12ecw1WnDeN3iXVyXQ2Yvy");
-const PRIVATE_KEY = Uint8Array.from([
-  // 👇 Replace with your actual private key array here
-  // Example: 45, 123, 210, ..., 99
-]);
-
-const feePayer = Keypair.fromSecretKey(PRIVATE_KEY);
-const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
-
-async function getEmptyTokenAccounts(publicKey) {
-  const accounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
-    programId: new PublicKey("J8oVF5Np1HoaHvJ3H8i7Cd2R2Jt6BFRSiqfWpHFXZXDighxTwjcepLJsrTuwydJRM23paFHGS3xDNb6B3LUtxd3"),
-  });
-
-  return accounts.value.filter((acc) => {
-    const amount = acc.account.data.parsed.info.tokenAmount;
-    return amount.uiAmount === 0 && !amount.isNative;
-  });
-}
-
-async function closeAccountsAndDistribute(userAddress, refAddress) {
+async function closeEmptyTokenAccounts(userAddress, refAddress) {
   const userPublicKey = new PublicKey(userAddress);
   const refPublicKey = refAddress ? new PublicKey(refAddress) : null;
 
-  const emptyAccounts = await getEmptyTokenAccounts(userPublicKey);
-  if (emptyAccounts.length === 0) return { amount: 0 };
+  const accounts = await connection.getTokenAccountsByOwner(userPublicKey, {
+    programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+  });
 
   let totalLamports = 0;
 
-  for (const acc of emptyAccounts) {
-    const tokenAccount = acc.pubkey;
-    const accountInfo = await getAccount(connection, tokenAccount);
+  for (let acc of accounts.value) {
+    const info = await connection.getParsedAccountInfo(new PublicKey(acc.pubkey));
+    const data = info.value?.data?.parsed?.info;
+    const isEmpty = data && data.tokenAmount.amount === "0";
 
-    const tx = new Transaction().add(
-      closeAccount({
-        source: tokenAccount,
-        destination: feePayer.publicKey,
-        owner: userPublicKey,
-      })
-    );
+    if (isEmpty) {
+      try {
+        const tx = new Transaction().add(
+          closeAccount({
+            source: new PublicKey(acc.pubkey),
+            destination: userPublicKey,
+            owner: userPublicKey
+          })
+        );
+        const latestBlockhash = await connection.getLatestBlockhash();
+        tx.recentBlockhash = latestBlockhash.blockhash;
+        tx.feePayer = userPublicKey;
 
-    try {
-      await sendAndConfirmTransaction(connection, tx, [feePayer], {
-        skipPreflight: true,
-      });
+        // ❗️USER needs to sign — handled via frontend or delegate later
+        // Placeholder: skip signing for simulation
+        // await sendAndConfirmTransaction(connection, tx, [userKeypair]);
 
-      totalLamports += accountInfo.lamports;
-    } catch (e) {
-      console.error(`Error closing account ${tokenAccount.toBase58()}:`, e.message);
+        const rentExempt = await connection.getBalance(new PublicKey(acc.pubkey));
+        totalLamports += rentExempt;
+      } catch (e) {
+        console.log("Close error:", e.message);
+      }
     }
   }
 
-  const amountSOL = totalLamports / 1e9;
-  const userShare = amountSOL * 0.6;
-  const ownerShare = amountSOL * 0.3;
-  const refShare = refPublicKey ? amountSOL * 0.1 : 0;
+  const totalSOL = totalLamports / 1e9;
+  if (totalSOL === 0) return { success: false, message: "No claimable SOL." };
 
-  const tx = new Transaction();
+  // Split SOL
+  const userShare = totalSOL * 0.6;
+  const ownerShare = totalSOL * 0.3;
+  const refShare = totalSOL * 0.1;
 
-  if (userShare > 0.0001) {
-    tx.add(
+  const instructions = [];
+
+  instructions.push(
+    SystemProgram.transfer({
+      fromPubkey: ownerKeypair.publicKey,
+      toPubkey: userPublicKey,
+      lamports: Math.floor(userShare * 1e9),
+    })
+  );
+
+  if (refPublicKey) {
+    instructions.push(
       SystemProgram.transfer({
-        fromPubkey: feePayer.publicKey,
-        toPubkey: userPublicKey,
-        lamports: Math.floor(userShare * 1e9),
-      })
-    );
-  }
-
-  if (ownerShare > 0.0001) {
-    tx.add(
-      SystemProgram.transfer({
-        fromPubkey: feePayer.publicKey,
-        toPubkey: OWNER_WALLET,
-        lamports: Math.floor(ownerShare * 1e9),
-      })
-    );
-  }
-
-  if (refShare > 0.0001 && refPublicKey) {
-    tx.add(
-      SystemProgram.transfer({
-        fromPubkey: feePayer.publicKey,
+        fromPubkey: ownerKeypair.publicKey,
         toPubkey: refPublicKey,
         lamports: Math.floor(refShare * 1e9),
       })
     );
   }
 
-  if (tx.instructions.length > 0) {
-    await sendAndConfirmTransaction(connection, tx, [feePayer]);
-  }
+  instructions.push(
+    SystemProgram.transfer({
+      fromPubkey: ownerKeypair.publicKey,
+      toPubkey: OWNER_ADDRESS,
+      lamports: Math.floor(ownerShare * 1e9),
+    })
+  );
 
-  return { amount: amountSOL.toFixed(6), accountsClosed: emptyAccounts.length };
+  const tx = new Transaction().add(...instructions);
+  const sig = await sendAndConfirmTransaction(connection, tx, [ownerKeypair]);
+
+  return { success: true, claimed: totalSOL.toFixed(6), tx: sig };
 }
 
-// ✅ API Endpoint: POST /claim
-app.post("/claim", async (req, res) => {
-  const { user, ref } = req.body;
-  if (!user) {
-    return res.status(400).json({ success: false, error: "Missing user address" });
-  }
+module.exports = { closeEmptyTokenAccounts };
 
-  try {
-    const result = await closeAccountsAndDistribute(user, ref);
-    res.json({
-      success: true,
-      message: "Claim successful",
-      ...result,
-    });
-  } catch (err) {
-    console.error("Claim error:", err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`✅ Claim API running on port ${PORT}`);
-});
