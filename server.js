@@ -10,7 +10,7 @@ app.use(express.json());
 app.use(cors());
 
 // ✅ Route import
-const claimRoute = require("./routes/claim");
+const claimRoute = require("./claim");
 
 // ✅ Use route
 app.use("/claim", claimRoute);
