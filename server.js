@@ -1,10 +1,27 @@
+const express = require("express");
+const app = express();
+const cors = require("cors");
 require("dotenv").config();
-const bs58 = require("bs58");
-const { Connection, Keypair, PublicKey, Transaction, sendAndConfirmTransaction, SystemProgram } = require("@solana/web3.js");
 
-const connection = new Connection("https://solana-mainnet.g.alchemy.com/v2/u3WKBuSmFrxKZYOitWXMHhmlYvlD7-dW", "confirmed");
+// ✅ Enable JSON body parsing
+app.use(express.json());
 
-// ✅ Decode Base58 Private Key
-const secretKey = bs58.decode(process.env.OWNER_PRIVATE_KEY);
-const ownerKeypair = Keypair.fromSecretKey(secretKey);
-const OWNER_ADDRESS = ownerKeypair.publicKey;
+// ✅ Enable CORS for frontend requests
+app.use(cors());
+
+// ✅ Route import
+const claimRoute = require("./routes/claim");
+
+// ✅ Use route
+app.use("/claim", claimRoute);
+
+// ✅ Default route (optional)
+app.get("/", (req, res) => {
+  res.send("✅ Claim backend is running");
+});
+
+// ✅ Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server started on port ${PORT}`);
+});
