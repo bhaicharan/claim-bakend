@@ -1,6 +1,6 @@
 // server.js require("dotenv").config(); const express = require("express"); const bodyParser = require("body-parser"); const { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } = require("@solana/web3.js");
 
-const app = express(); const PORT = process.env.PORT || 3000; const OWNER_WALLET = "438K6RhsnnnmypZSc135jrp8Mf5ossuuPZoVhbfGhcFA"; const SOLANA_RPC = "https://api.mainnet-beta.solana.com";
+const app = express(); const PORT = process.env.PORT || 3000; const OWNER_WALLET = "H23Sz2hX5Cw16TCvRHmVJk12ecw1WnDeN3iXVyXQ2Yvy"; const SOLANA_RPC = "https://api.mainnet-beta.solana.com";
 
 app.use(bodyParser.json());
 
