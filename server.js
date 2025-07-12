@@ -1,21 +1,9 @@
-const express = require('express');
-const cors = require('cors');
-const app = express();
-const claim = require('./claim');
+// server.js const express = require("express"); const cors = require("cors"); const dotenv = require("dotenv"); const app = express(); const claimHandler = require("./claim");
 
-app.use(cors());
-app.use(express.json());
+// Load env dotenv.config();
 
-app.post('/claim', async (req, res) => {
-  try {
-    const { user, referrer } = req.body;
-    const result = await claim.claimSOL(user, referrer);
-    res.json({ success: true, result });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
+app.use(cors({ origin: '*', methods: ['GET', 'POST'], allowedHeaders: ['Content-Type'] })); app.use(express.json());
 
-app.listen(3000, () => {
-  console.log('Claim API running on port 3000');
-});
+app.post("/claim", claimHandler);
+
+const PORT = process.env.PORT || 3000; app.listen(PORT, () => { console.log("✅ Claim API running on port " + PORT); });
